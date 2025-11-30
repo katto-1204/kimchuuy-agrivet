@@ -1,4 +1,5 @@
 import { query } from "@/lib/db"
+import pool from "@/lib/db"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET() {
@@ -27,16 +28,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Customer name is required" }, { status: 400 })
     }
 
-    const result = await query(
-      `INSERT INTO customers (name, phone, email, address, created_at)
-       VALUES (?, ?, ?, ?, NOW())`,
-      [name, phone || null, email || null, address || null],
-    )
-
-    return NextResponse.json({
-      customer_id: (result as any).insertId,
-      message: "Customer created successfully",
-    })
+    const userId = request.headers.get('X-User-Id')
+    const conn = await pool.getConnection()
+    try {
+      await conn.beginTransaction()
+      const [result] = await conn.query(
+        `INSERT INTO customers (name, phone, email, address, created_at)
+         VALUES (?, ?, ?, ?, NOW())`,
+        [name, phone || null, email || null, address || null],
+      )
+      // @ts-ignore
+      const insertId = (result as any).insertId
+      if (userId) {
+        await conn.query(
+          `INSERT INTO audit_logs (user_id, action, table_name, record_id, created_at) VALUES (?, 'CREATE', 'customers', ?, NOW())`,
+          [userId, insertId],
+        )
+      }
+      await conn.commit()
+      return NextResponse.json({ customer_id: insertId, message: "Customer created successfully" })
+    } catch (err) {
+      await conn.rollback()
+      throw err
+    } finally {
+      conn.release()
+    }
   } catch (error) {
     console.error("POST /api/customers error:", error)
     return NextResponse.json({ error: "Failed to create customer" }, { status: 500 })

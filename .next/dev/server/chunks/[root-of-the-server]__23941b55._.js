@@ -153,6 +153,7 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$serv
 var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/lib/db.ts [app-route] (ecmascript)");
 ;
 ;
+;
 async function GET() {
     try {
         const rows = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`
@@ -177,25 +178,42 @@ async function POST(req) {
     try {
         const body = await req.json();
         const { name, category_id, description, sku, price, cost_price, stock, min_stock, expiry_date } = body;
-        const res = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`INSERT INTO products (category_id, name, description, sku, price, cost_price, stock, min_stock, expiry_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-            category_id || null,
-            name,
-            description || null,
-            sku || null,
-            price || 0,
-            cost_price || null,
-            stock || 0,
-            min_stock || 0,
-            expiry_date || null
-        ]);
-        // get inserted id
-        // @ts-ignore
-        const insertId = res.insertId;
-        const rows = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.category_id WHERE p.product_id = ?`, [
-            insertId
-        ]);
-        return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json(rows[0]);
+        const userId = req.headers.get('X-User-Id');
+        const conn = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["default"].getConnection();
+        try {
+            await conn.beginTransaction();
+            const [res] = await conn.query(`INSERT INTO products (category_id, name, description, sku, price, cost_price, stock, min_stock, expiry_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+                category_id || null,
+                name,
+                description || null,
+                sku || null,
+                price || 0,
+                cost_price || null,
+                stock || 0,
+                min_stock || 0,
+                expiry_date || null
+            ]);
+            // @ts-ignore
+            const insertId = res.insertId;
+            // optional audit log
+            if (userId) {
+                await conn.query(`INSERT INTO audit_logs (user_id, action, table_name, record_id, created_at) VALUES (?, 'CREATE', 'products', ?, NOW())`, [
+                    userId,
+                    insertId
+                ]);
+            }
+            const [rows] = await conn.query(`SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.category_id WHERE p.product_id = ?`, [
+                insertId
+            ]);
+            await conn.commit();
+            return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json(rows[0]);
+        } catch (err) {
+            await conn.rollback();
+            throw err;
+        } finally{
+            conn.release();
+        }
     } catch (err) {
         return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
             error: String(err)

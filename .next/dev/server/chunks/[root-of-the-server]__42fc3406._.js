@@ -155,6 +155,7 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$serv
 var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/lib/db.ts [app-route] (ecmascript)");
 ;
 ;
+;
 async function GET(request, { params }) {
     try {
         const { id } = await params;
@@ -180,23 +181,40 @@ async function PUT(req, { params }) {
         const { id } = await params;
         const body = await req.json();
         const { name, category_id, description, sku, price, cost_price, stock, min_stock, expiry_date, is_archived } = body;
-        await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`UPDATE products SET category_id = ?, name = ?, description = ?, sku = ?, price = ?, cost_price = ?, stock = ?, min_stock = ?, expiry_date = ?, is_archived = ? WHERE product_id = ?`, [
-            category_id || null,
-            name,
-            description || null,
-            sku || null,
-            price || 0,
-            cost_price || null,
-            stock || 0,
-            min_stock || 0,
-            expiry_date || null,
-            is_archived ? 1 : 0,
-            id
-        ]);
-        const rows = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.category_id WHERE p.product_id = ?`, [
-            id
-        ]);
-        return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json(rows[0]);
+        const userId = req.headers.get('X-User-Id');
+        const conn = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["default"].getConnection();
+        try {
+            await conn.beginTransaction();
+            await conn.query(`UPDATE products SET category_id = ?, name = ?, description = ?, sku = ?, price = ?, cost_price = ?, stock = ?, min_stock = ?, expiry_date = ?, is_archived = ? WHERE product_id = ?`, [
+                category_id || null,
+                name,
+                description || null,
+                sku || null,
+                price || 0,
+                cost_price || null,
+                stock || 0,
+                min_stock || 0,
+                expiry_date || null,
+                is_archived ? 1 : 0,
+                id
+            ]);
+            if (userId) {
+                await conn.query(`INSERT INTO audit_logs (user_id, action, table_name, record_id, created_at) VALUES (?, 'UPDATE', 'products', ?, NOW())`, [
+                    userId,
+                    id
+                ]);
+            }
+            const [rows] = await conn.query(`SELECT p.*, c.name as category_name FROM products p LEFT JOIN categories c ON p.category_id = c.category_id WHERE p.product_id = ?`, [
+                id
+            ]);
+            await conn.commit();
+            return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json(rows[0]);
+        } catch (err) {
+            await conn.rollback();
+            throw err;
+        } finally{
+            conn.release();
+        }
     } catch (err) {
         return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
             error: String(err)
@@ -209,12 +227,29 @@ async function DELETE(req, { params }) {
     try {
         const { id } = await params;
         // Soft-delete: mark archived
-        await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`UPDATE products SET is_archived = TRUE WHERE product_id = ?`, [
-            id
-        ]);
-        return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
-            success: true
-        });
+        const userId = req.headers.get('X-User-Id');
+        const conn = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["default"].getConnection();
+        try {
+            await conn.beginTransaction();
+            await conn.query(`UPDATE products SET is_archived = TRUE WHERE product_id = ?`, [
+                id
+            ]);
+            if (userId) {
+                await conn.query(`INSERT INTO audit_logs (user_id, action, table_name, record_id, created_at) VALUES (?, 'DELETE', 'products', ?, NOW())`, [
+                    userId,
+                    id
+                ]);
+            }
+            await conn.commit();
+            return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
+                success: true
+            });
+        } catch (err) {
+            await conn.rollback();
+            throw err;
+        } finally{
+            conn.release();
+        }
     } catch (err) {
         return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
             error: String(err)

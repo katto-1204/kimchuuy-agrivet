@@ -1,4 +1,5 @@
 import { query } from "@/lib/db"
+import pool from "@/lib/db"
 import { NextRequest, NextResponse } from "next/server"
 
 export async function GET(
@@ -57,44 +58,46 @@ export async function DELETE(
       return NextResponse.json({ error: "Invalid sale ID" }, { status: 400 })
     }
 
-    // Fetch sale and items to restore stock
-    const saleResults = await query("SELECT * FROM sales WHERE sale_id = ?", [saleId])
-    if ((saleResults as any[]).length === 0) {
-      return NextResponse.json({ error: "Sale not found" }, { status: 404 })
+    const conn = await pool.getConnection()
+    try {
+      await conn.beginTransaction()
+
+      // Fetch sale and items to restore stock
+      const [saleResults] = await conn.query("SELECT * FROM sales WHERE sale_id = ?", [saleId])
+      if ((saleResults as any[]).length === 0) {
+        await conn.rollback()
+        return NextResponse.json({ error: "Sale not found" }, { status: 404 })
+      }
+
+      const [itemResults] = await conn.query("SELECT * FROM sale_items WHERE sale_id = ?", [saleId])
+
+      // Restore stock
+      for (const item of itemResults as any[]) {
+        await conn.query(`UPDATE products SET stock = stock + ? WHERE product_id = ?`, [item.quantity, item.product_id])
+      }
+
+      // Delete sale items
+      await conn.query("DELETE FROM sale_items WHERE sale_id = ?", [saleId])
+
+      // Soft delete sale (mark as voided)
+      await conn.query("UPDATE sales SET is_voided = TRUE, void_reason = ? WHERE sale_id = ?", ["User voided", saleId])
+
+      // Audit log
+      if (userId) {
+        await conn.query(
+          `INSERT INTO audit_logs (user_id, action, table_name, record_id, created_at) VALUES (?, 'DELETE', 'sales', ?, NOW())`,
+          [userId, saleId],
+        )
+      }
+
+      await conn.commit()
+      return NextResponse.json({ message: "Sale voided successfully" })
+    } catch (err) {
+      await conn.rollback()
+      throw err
+    } finally {
+      conn.release()
     }
-
-    const itemResults = await query(
-      "SELECT * FROM sale_items WHERE sale_id = ?",
-      [saleId],
-    )
-
-    // Restore stock
-    for (const item of itemResults as any[]) {
-      await query(
-        `UPDATE products SET stock = stock + ? WHERE product_id = ?`,
-        [item.quantity, item.product_id],
-      )
-    }
-
-    // Delete sale items
-    await query("DELETE FROM sale_items WHERE sale_id = ?", [saleId])
-
-    // Soft delete sale (mark as voided)
-    await query(
-      "UPDATE sales SET is_voided = TRUE, void_reason = ? WHERE sale_id = ?",
-      ["User voided", saleId],
-    )
-
-    // Audit log
-    if (userId) {
-      await query(
-        `INSERT INTO audit_logs (user_id, action, table_name, record_id, created_at)
-         VALUES (?, 'DELETE', 'sales', ?, NOW())`,
-        [userId, saleId],
-      )
-    }
-
-    return NextResponse.json({ message: "Sale voided successfully" })
   } catch (error) {
     console.error("DELETE /api/sales/[id] error:", error)
     return NextResponse.json({ error: "Failed to void sale" }, { status: 500 })
