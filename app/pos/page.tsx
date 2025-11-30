@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { ProtectedLayout } from "@/components/layout/protected-layout"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -20,13 +20,15 @@ import {
   Printer,
   Check,
 } from "lucide-react"
-import { mockProducts, mockCategories } from "@/lib/mock-data"
+import { mockCategories } from "@/lib/mock-data"
 import { useAuth } from "@/lib/auth-context"
 import type { CartItem, Product, Customer } from "@/lib/types"
 
 export default function POSPage() {
   const { user } = useAuth()
   const [cart, setCart] = useState<CartItem[]>([])
+  const [products, setProducts] = useState<Product[]>([])
+  const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<number | null>(null)
   const [showPayment, setShowPayment] = useState(false)
@@ -38,9 +40,27 @@ export default function POSPage() {
   const [discount, setDiscount] = useState(0)
   const [lastSaleId, setLastSaleId] = useState<number | null>(null)
 
+  // Fetch products from database
+  useEffect(() => {
+    const fetchProducts = async () => {
+      try {
+        const response = await fetch("/api/products")
+        const data = await response.json()
+        setProducts(data.products || [])
+      } catch (error) {
+        console.error("Failed to fetch products:", error)
+        setProducts([])
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchProducts()
+  }, [])
+
   // Filter products
   const filteredProducts = useMemo(() => {
-    return mockProducts.filter((p) => {
+    return products.filter((p: Product) => {
       if (p.is_archived || p.stock <= 0) return false
       const matchesSearch =
         p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -48,7 +68,7 @@ export default function POSPage() {
       const matchesCategory = selectedCategory === null || p.category_id === selectedCategory
       return matchesSearch && matchesCategory
     })
-  }, [searchQuery, selectedCategory])
+  }, [searchQuery, selectedCategory, products])
 
   // Calculate totals
   const subtotal = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
@@ -127,6 +147,16 @@ export default function POSPage() {
       setLastSaleId(data.sale_id)
       setShowPayment(false)
       setShowReceipt(true)
+      
+      // Update local products to reflect stock changes
+      const updatedProducts = products.map((p: Product) => {
+        const cartItem = cart.find((item) => item.product.product_id === p.product_id)
+        if (cartItem) {
+          return { ...p, stock: Math.max(0, p.stock - cartItem.quantity) }
+        }
+        return p
+      })
+      setProducts(updatedProducts)
     } catch (error) {
       console.error("Payment error:", error)
       alert("Failed to process payment")
@@ -140,6 +170,7 @@ export default function POSPage() {
     setReferenceNumber("")
     setPaymentMethod("Cash")
     setLastSaleId(null)
+    // Refresh products from database to get latest stock levels
     window.location.reload()
   }
 
@@ -185,44 +216,51 @@ export default function POSPage() {
 
           {/* Product Grid */}
           <div className="flex-1 p-4 overflow-y-auto">
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-              {filteredProducts.map((product) => {
-                const inCart = cart.find((item) => item.product.product_id === product.product_id)
-                return (
-                  <button
-                    key={product.product_id}
-                    onClick={() => addToCart(product)}
-                    className="bg-card rounded-xl p-3 text-left hover:shadow-lg transition-shadow border border-border hover:border-primary relative group"
-                  >
-                    {inCart && (
-                      <Badge className="absolute -top-2 -right-2 bg-primary text-white">{inCart.quantity}</Badge>
-                    )}
-                    <div className="w-full aspect-square bg-muted/30 rounded-lg mb-2 flex items-center justify-center">
-                      <span className="text-3xl text-muted">
-                        {product.category_name === "Feeds"
-                          ? "🐕"
-                          : product.category_name === "Medicine"
-                            ? "💊"
-                            : product.category_name === "Vitamins"
-                              ? "💉"
-                              : product.category_name === "Accessories"
-                                ? "🦴"
-                                : "📦"}
-                      </span>
-                    </div>
-                    <p className="text-sm font-medium text-foreground line-clamp-2 leading-tight">{product.name}</p>
-                    <p className="text-xs text-muted mt-1">{product.sku}</p>
-                    <div className="flex items-center justify-between mt-2">
-                      <p className="text-sm font-bold text-primary">₱{product.price.toLocaleString("en-PH")}</p>
-                      <p className={`text-xs ${product.stock <= product.min_stock ? "text-warning" : "text-muted"}`}>
-                        {product.stock} left
-                      </p>
-                    </div>
-                  </button>
-                )
-              })}
-            </div>
-            {filteredProducts.length === 0 && (
+            {loading ? (
+              <div className="flex flex-col items-center justify-center h-64 text-muted">
+                <div className="h-12 w-12 border-4 border-primary border-t-transparent rounded-full animate-spin mb-4" />
+                <p className="text-lg font-medium">Loading products...</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {filteredProducts.map((product: Product) => {
+                  const inCart = cart.find((item) => item.product.product_id === product.product_id)
+                  return (
+                    <button
+                      key={product.product_id}
+                      onClick={() => addToCart(product)}
+                      className="bg-card rounded-xl p-3 text-left hover:shadow-lg transition-shadow border border-border hover:border-primary relative group"
+                    >
+                      {inCart && (
+                        <Badge className="absolute -top-2 -right-2 bg-primary text-white">{inCart.quantity}</Badge>
+                      )}
+                      <div className="w-full aspect-square bg-muted/30 rounded-lg mb-2 flex items-center justify-center">
+                        <span className="text-3xl text-muted">
+                          {product.category_name === "Feeds"
+                            ? "🐕"
+                            : product.category_name === "Medicine"
+                              ? "💊"
+                              : product.category_name === "Vitamins"
+                                ? "💉"
+                                : product.category_name === "Accessories"
+                                  ? "🦴"
+                                  : "📦"}
+                        </span>
+                      </div>
+                      <p className="text-sm font-medium text-foreground line-clamp-2 leading-tight">{product.name}</p>
+                      <p className="text-xs text-muted mt-1">{product.sku}</p>
+                      <div className="flex items-center justify-between mt-2">
+                        <p className="text-sm font-bold text-primary">₱{product.price.toLocaleString("en-PH")}</p>
+                        <p className={`text-xs ${product.stock <= product.min_stock ? "text-warning" : "text-muted"}`}>
+                          {product.stock} left
+                        </p>
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {!loading && filteredProducts.length === 0 && (
               <div className="flex flex-col items-center justify-center h-64 text-muted">
                 <Search className="h-12 w-12 mb-4" />
                 <p className="text-lg font-medium">No products found</p>

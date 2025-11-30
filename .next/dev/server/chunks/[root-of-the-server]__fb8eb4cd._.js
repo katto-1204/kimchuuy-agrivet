@@ -153,6 +153,7 @@ var __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$
 var __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__ = __turbopack_context__.i("[project]/node_modules/next/server.js [app-route] (ecmascript)");
 ;
 ;
+;
 async function GET(request) {
     try {
         const sql = `
@@ -253,48 +254,79 @@ async function POST(request) {
                 subtotal: itemSubtotal
             });
         }
-        // Insert sale
-        const saleResult = await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`INSERT INTO sales 
-        (user_id, customer_id, sale_date, subtotal, discount, vat, total, amount_paid, change_amount, payment_method, reference_number)
-        VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)`, [
-            user_id,
-            customer_id || null,
-            subtotal,
-            discount,
-            vat || (subtotal - discount) * 0.12,
-            total || subtotal - discount + (vat || (subtotal - discount) * 0.12),
-            amount_paid,
-            change_amount,
-            payment_method,
-            reference_number || null
-        ]);
-        const saleId = saleResult.insertId;
-        // Insert sale items and deduct stock
-        for (const item of itemsWithPrice){
-            await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal)
-         VALUES (?, ?, ?, ?, ?)`, [
-                saleId,
-                item.product_id,
-                item.quantity,
-                item.unit_price,
-                item.subtotal
+        // Use a dedicated connection and transaction to ensure consistency
+        const conn = await __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["default"].getConnection();
+        try {
+            await conn.beginTransaction();
+            const [saleResult] = await conn.query(`INSERT INTO sales 
+          (user_id, customer_id, sale_date, subtotal, discount, vat, total, amount_paid, change_amount, payment_method, reference_number)
+          VALUES (?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)`, [
+                user_id,
+                customer_id || null,
+                subtotal,
+                discount,
+                vat || (subtotal - discount) * 0.12,
+                total || subtotal - discount + (vat || (subtotal - discount) * 0.12),
+                amount_paid,
+                change_amount,
+                payment_method,
+                reference_number || null
             ]);
-            // Deduct stock
-            await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`UPDATE products SET stock = stock - ? WHERE product_id = ?`, [
-                item.quantity,
-                item.product_id
+            const saleId = saleResult.insertId;
+            // Insert sale items and deduct stock
+            for (const item of itemsWithPrice){
+                await conn.query(`INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, subtotal)
+           VALUES (?, ?, ?, ?, ?)`, [
+                    saleId,
+                    item.product_id,
+                    item.quantity,
+                    item.unit_price,
+                    item.subtotal
+                ]);
+                // Deduct stock
+                const [updateResult] = await conn.query(`UPDATE products SET stock = stock - ? WHERE product_id = ? AND stock >= ?`, [
+                    item.quantity,
+                    item.product_id,
+                    item.quantity
+                ]);
+                // If stock update affected 0 rows, rollback and return error
+                if (updateResult.affectedRows === 0) {
+                    await conn.rollback();
+                    conn.release();
+                    return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
+                        error: `Insufficient stock for product ${item.product_id}`
+                    }, {
+                        status: 400
+                    });
+                }
+            }
+            // Audit log (created_at column exists; don't use non-existent `timestamp`)
+            await conn.query(`INSERT INTO audit_logs (user_id, action, table_name, record_id, created_at)
+         VALUES (?, 'CREATE', 'sales', ?, NOW())`, [
+                user_id,
+                saleId
             ]);
+            await conn.commit();
+            conn.release();
+            return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
+                sale_id: saleId,
+                message: "Sale recorded successfully"
+            });
+        } catch (txErr) {
+            try {
+                await conn.rollback();
+            } catch (rbErr) {
+                console.error("Rollback failed:", rbErr);
+            }
+            conn.release();
+            console.error("Transaction error in POST /api/sales:", txErr);
+            const errMessage = ("TURBOPACK compile-time falsy", 0) ? "TURBOPACK unreachable" : String(txErr?.message || txErr);
+            return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
+                error: errMessage
+            }, {
+                status: 500
+            });
         }
-        // Audit log
-        await (0, __TURBOPACK__imported__module__$5b$project$5d2f$lib$2f$db$2e$ts__$5b$app$2d$route$5d$__$28$ecmascript$29$__["query"])(`INSERT INTO audit_logs (user_id, action, table_name, record_id, timestamp)
-       VALUES (?, 'CREATE', 'sales', ?, NOW())`, [
-            user_id,
-            saleId
-        ]);
-        return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({
-            sale_id: saleId,
-            message: "Sale recorded successfully"
-        });
     } catch (error) {
         console.error("POST /api/sales error:", error);
         return __TURBOPACK__imported__module__$5b$project$5d2f$node_modules$2f$next$2f$server$2e$js__$5b$app$2d$route$5d$__$28$ecmascript$29$__["NextResponse"].json({

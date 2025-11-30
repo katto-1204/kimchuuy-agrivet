@@ -88,7 +88,7 @@ export async function DELETE(
     // Audit log
     if (userId) {
       await query(
-        `INSERT INTO audit_logs (user_id, action, table_name, record_id, timestamp)
+        `INSERT INTO audit_logs (user_id, action, table_name, record_id, created_at)
          VALUES (?, 'DELETE', 'sales', ?, NOW())`,
         [userId, saleId],
       )
