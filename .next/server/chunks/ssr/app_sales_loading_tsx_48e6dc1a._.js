@@ -1,0 +1,3 @@
+module.exports=[91331,a=>{"use strict";var b=a.i(7997);function c(){return(0,b.jsxs)("div",{className:"p-6 space-y-6",children:[(0,b.jsx)("div",{className:"h-8 bg-muted rounded animate-pulse"}),(0,b.jsx)("div",{className:"h-12 bg-muted rounded animate-pulse"}),(0,b.jsx)("div",{className:"h-64 bg-muted rounded animate-pulse"})]})}a.s(["default",()=>c])}];
+
+//# sourceMappingURL=app_sales_loading_tsx_48e6dc1a._.js.map

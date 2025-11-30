@@ -121,6 +121,30 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* explicit fallbacks in case CSS variables/functions (oklch) are unsupported */
+    background-color: var(--background, #ffffff);
+    color: var(--foreground, #0f172a);
+    font-family: var(--font-sans, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial);
+  }
+
+  /* Light-mode explicit rules: ensure dark text on light backgrounds */
+  :not(.dark) body {
+    background-color: var(--background, #ffffff) !important;
+    color: var(--foreground, #0f172a) !important;
+  }
+
+  :not(.dark) .card, :not(.dark) .card * {
+    color: var(--color-card-foreground, #0f172a) !important;
+  }
+
+  :not(.dark) h1, :not(.dark) h2, :not(.dark) h3, :not(.dark) h4, :not(.dark) h5, :not(.dark) h6, :not(.dark) p, :not(.dark) a, :not(.dark) span {
+    color: var(--foreground, #0f172a) !important;
+  }
+
+  /* Ensure dark theme explicitly sets visible text when .dark is applied */
+  .dark body {
+    background-color: var(--background, #0f172a) !important;
+    color: var(--foreground, #f8fafc) !important;
   }
 
   /* Improve contrast for muted text and card contents */
@@ -133,7 +157,13 @@
 
   /* Ensure card content uses card foreground by default */
   .card, .card * {
-    color: var(--color-card-foreground);
+    /* ensure card text remains visible even if variable functions fail */
+    color: var(--color-card-foreground, #0f172a) !important;
+  }
+
+  /* Dark-mode explicit card text fallback */
+  .dark .card, .dark .card * {
+    color: var(--color-card-foreground, #f8fafc) !important;
   }
 
   /* CTA utility overrides to ensure blue buttons show correctly */

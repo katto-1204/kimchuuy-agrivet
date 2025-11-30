@@ -7,5 +7,20 @@ import {
 } from 'next-themes'
 
 export function ThemeProvider({ children, ...props }: ThemeProviderProps) {
-  return <NextThemesProvider {...props}>{children}</NextThemesProvider>
+  // Provide safe defaults to avoid SSR/CSR hydration mismatches:
+  // - attribute="class" so theme toggles add/remove `.dark` on <html> or <body>
+  // - defaultTheme="light" to keep server and client initial markup consistent
+  // - enableSystem=false to avoid using system preference during SSR
+  const defaults: Partial<ThemeProviderProps> = {
+    attribute: 'class',
+    defaultTheme: 'light',
+    enableSystem: false,
+    enableColorScheme: false,
+  }
+
+  return (
+    <NextThemesProvider {...defaults} {...props}>
+      {children}
+    </NextThemesProvider>
+  )
 }

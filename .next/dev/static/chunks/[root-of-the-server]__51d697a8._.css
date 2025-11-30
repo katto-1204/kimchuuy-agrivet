@@ -166,6 +166,7 @@
 
 @layer theme {
   :root, :host {
+    --font-sans: "Geist", "Geist Fallback";
     --color-red-50: #fef2f2;
     --color-red-300: #ffa3a3;
     --color-red-400: #ff6568;
@@ -519,7 +520,27 @@
 
   body {
     background-color: var(--background);
-    color: var(--foreground);
+    color: var(--foreground, #0f172a);
+    background-color: var(--background, #fff);
+    font-family: var(--font-sans, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial);
+  }
+
+  :not(.dark) body {
+    background-color: var(--background, #fff) !important;
+    color: var(--foreground, #0f172a) !important;
+  }
+
+  :not(.dark) .card, :not(.dark) .card * {
+    color: var(--color-card-foreground, #0f172a) !important;
+  }
+
+  :not(.dark) h1, :not(.dark) h2, :not(.dark) h3, :not(.dark) h4, :not(.dark) h5, :not(.dark) h6, :not(.dark) p, :not(.dark) a, :not(.dark) span {
+    color: var(--foreground, #0f172a) !important;
+  }
+
+  .dark body {
+    background-color: var(--background, #0f172a) !important;
+    color: var(--foreground, #f8fafc) !important;
   }
 
   .text-muted {
@@ -531,7 +552,11 @@
   }
 
   .card, .card * {
-    color: var(--color-card-foreground);
+    color: var(--color-card-foreground, #0f172a) !important;
+  }
+
+  .dark .card, .dark .card * {
+    color: var(--color-card-foreground, #f8fafc) !important;
   }
 
   .bg-primary {
